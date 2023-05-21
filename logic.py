@@ -8,6 +8,7 @@ clear()
 
 # GLOBAL VARIABLES #
 gWFFID = 0
+gSUB = 0
 
 # CLASSES #
 class WFF:
@@ -26,36 +27,49 @@ class Syntax:
         self.test = func
 
 class Expression:
-    def __init__(self, var1, syntax: Syntax=None, var2=None) -> None:
+    def __init__(self, var1=None, syntax: Syntax=None, var2=None) -> None:
         self.var1 = var1
         self.syntax = syntax
         self.var2 = var2
-        self.id = var1.id * gWFFID * 2
+        self.id = var1.id * gWFFID * 2 if var1 is not None else gWFFID * 2
         try:
             self.id += var2.id * gWFFID * 3
         except:
             self.id += gWFFID * 3
+
+        if var2 is None:
+            self.type = "WFF"   
+        elif var1 is None:
+            self.type = "NOT"
+        else:
+            self.type = "EXP"
     
     def __str__(self) -> str:
-        try:
-            return f"({self.var1} {self.syntax.symbol} {self.var2})"
-        except:
+        if self.type == "NOT":
+            return f"{self.syntax.symbol} {self.var2}"
+        elif self.type == "WFF":
             return f"{self.var1}"
+        elif self.type == "EXP":
+            return f"({self.var1} {self.syntax.symbol} {self.var2})"
     
-    def substitute(self, var1, var2=None) -> list:
-        if isinstance(self.var1, Expression):
-            var1 = self.var1.substitute(var1, var2)
-        if isinstance(self.var2, Expression):
-            var2 = self.var2.substitute(var1, var2)
+    def substitute(self, var1, var2=None):
+        print(" " * (30), self, var1, var2)
+        if isinstance(var1, Expression):
+            var1 = var1.substitute(var1.var1, var1.var2)
+        if isinstance(var2, Expression):
+            var2 = var2.substitute(var2.var1, var2.var2)
+        
+        if self.type == "NOT":
+            return Expression(None, self.syntax, var1)
         return Expression(var1, self.syntax, var2)
     
-    def test(self, var1: bool, var2: bool=None) -> bool:
+    def test(self, var1, var2=None) -> bool:
         if self.syntax is None:
             return var1
-        if isinstance(self.var1, Expression):
-            var1 = self.var1.test(var1, var2)
-        if isinstance(self.var2, Expression):
-            var2 = self.var2.test(var1, var2)
+        if isinstance(var1, Expression):
+            var1 = var1.test(var1, var2)
+        if isinstance(var2, Expression):
+            var2 = var2.test(var1, var2)
         return self.syntax.test(var1, var2)
 
 class Axiom:
@@ -66,7 +80,7 @@ class Axiom:
     def rec_sub(self, expression, *vars) -> list:
         sub1 = None
         sub2 = None
-        try:
+        if expression.type == "EXP":
             if isinstance(expression.var1, Expression): sub1 = self.rec_sub(expression.var1, *vars)
             else: sub1 = vars[expression.var1.id]
             
@@ -74,16 +88,22 @@ class Axiom:
             else: sub2 = vars[expression.var2.id]
 
             return Expression(sub1, expression.syntax, sub2)
-        except:
+        elif expression.type == "WFF":
             if isinstance(expression.var1, Expression): sub1 = self.rec_sub(expression.var1, *vars)
             else: sub1 = vars[expression.var1.id]
             
             return expression.substitute(sub1)
-        
-    def rec_test(self, expression, *vars):
+        elif expression.type == "NOT":
+            if isinstance(expression.var2, Expression): sub2 = self.rec_sub(expression.var2, *vars)
+            else: sub2 = vars[expression.var2.id]
+            
+            return Expression(None, expression.syntax, sub2)
+    
+    # expression.syntax.test(sub1, sub2)
+    def rec_test(self, expression: Expression, *vars: bool) -> bool:
         sub1 = None
         sub2 = None
-        try:
+        if expression.type == "EXP":
             if isinstance(expression.var1, Expression): sub1 = self.rec_test(expression.var1, *vars)
             else: sub1 = vars[expression.var1.id]
             
@@ -91,57 +111,79 @@ class Axiom:
             else: sub2 = vars[expression.var2.id]
 
             return expression.syntax.test(sub1, sub2)
-        except:
+        elif expression.type == "WFF":
             if isinstance(expression.var1, Expression): sub1 = self.rec_test(expression.var1, *vars)
             else: sub1 = vars[expression.var1.id]
             
             return sub1
+        elif expression.type == "NOT":
+            if isinstance(expression.var2, Expression): sub2 = self.rec_test(expression.var2, *vars)
+            else: sub2 = vars[expression.var2.id]
+            
+            return expression.syntax.test(sub2)
     
     def substitute(self, *vars) -> list:
+        global gSUB
+        gSUB += 2
+
         checkList = []
         retList = []
         print()
         for i in self.expressions:
             checkList.append(i)
             retList.append(self.rec_sub(i, *vars))
-            print("wff", str(retList[-1]))
+            print(" " * gSUB + "wff", str(retList[-1]))
+        
+        gSUB -= 2
+        return retList[-1]
 
     def test(self, *vars):
+        global gSUB
+        gSUB += 2
+        
         checkList = []
         retList = []
         print()
         for i in self.expressions:
             checkList.append(i)
             retList.append(self.rec_test(i, *vars))
-            print("wff", i, " : ", str(retList[-1]))
+            print(" " * gSUB + "wff", i, " : ", str(retList[-1]))
+        
+        gSUB -= 2
+        return retList[-1]
 
 class Theorem:
-    def __init__(self, name, assertion, *expressions) -> None:
+    def __init__(self, name: str, assertion: Expression, *operations: list) -> None:
         self.name = name
         self.assertion = assertion
-        self.expressions = expressions
+        self.operations = operations
     
     def rec_sub(self, expression, *vars) -> list:
         sub1 = None
         sub2 = None
-        try:
+        if expression.type == "EXP":
             if isinstance(expression.var1, Expression): sub1 = self.rec_sub(expression.var1, *vars)
             else: sub1 = vars[expression.var1.id]
-
+            
             if isinstance(expression.var2, Expression): sub2 = self.rec_sub(expression.var2, *vars)
             else: sub2 = vars[expression.var2.id]
 
             return Expression(sub1, expression.syntax, sub2)
-        except:
+        elif expression.type == "WFF":
             if isinstance(expression.var1, Expression): sub1 = self.rec_sub(expression.var1, *vars)
             else: sub1 = vars[expression.var1.id]
             
             return expression.substitute(sub1)
-        
-    def rec_test(self, expression, *vars):
+        elif expression.type == "NOT":
+            if isinstance(expression.var2, Expression): sub2 = self.rec_sub(expression.var2, *vars)
+            else: sub2 = vars[expression.var2.id]
+            
+            return Expression(None, expression.syntax, sub2)
+    
+    def rec_test(self, expression: Expression, *vars: bool) -> bool:
         sub1 = None
         sub2 = None
-        try:
+        if expression.type == "EXP":
             if isinstance(expression.var1, Expression): sub1 = self.rec_test(expression.var1, *vars)
             else: sub1 = vars[expression.var1.id]
             
@@ -149,31 +191,70 @@ class Theorem:
             else: sub2 = vars[expression.var2.id]
 
             return expression.syntax.test(sub1, sub2)
-        except:
+        elif expression.type == "WFF":
             if isinstance(expression.var1, Expression): sub1 = self.rec_test(expression.var1, *vars)
             else: sub1 = vars[expression.var1.id]
             
             return sub1
+        elif expression.type == "NOT":
+            if isinstance(expression.var2, Expression): sub2 = self.rec_test(expression.var2, *vars)
+            else: sub2 = vars[expression.var2.id]
+            
+            return expression.syntax.test(sub2)
     
     def substitute(self, *vars) -> list:
+        global gSUB
+        print("\n" + " " * gSUB + "Theorem:", self.name)
+        gSUB += 2
+
         checkList = []
         retList = []
-        print("\nHypotheses:")
-        for i in self.expressions:
+        print("\n" + " " * gSUB + "Hypotheses:")
+        for i in self.operations:
+            if not isinstance(i, Expression):
+                break
             checkList.append(i)
             retList.append(self.rec_sub(i, *vars))
-            print("⊢", str(retList[-1]))
-        print("Assertion:", self.rec_sub(self.assertion, *vars))
+            print(" " * gSUB + "⊢", str(retList[-1]))
+        
+        if isinstance(self.operations[-1], Expression):
+            print(" " * gSUB + "Assertion: ⊢", self.rec_sub(self.assertion, *vars))
+        
+            gSUB -= 2
+            return self.rec_sub(self.assertion, *vars)
+
+        print("\n" + " " * gSUB + "Steps:")
+        for i in self.operations:
+            if not any(isinstance(t, list) for t in self.operations):
+                break
+            if not isinstance(i, list):
+                continue
+            if not isinstance(i[1], Expression):
+                i[1] = retList[i[1] - 1]
+            checkList.append(i)
+            retList.append(i[0].substitute(i[1].var1, i[1].var2))
+            print(" " * gSUB + "Result: ⊢", str(retList[-1]))
+                
+        print("\n" + " " * gSUB + "Assertion: ⊢", self.rec_sub(self.assertion, *vars))
+        
+        gSUB -= 2
+        return self.rec_sub(self.assertion, *vars)
 
     def test(self, *vars):
+        global gSUB
+        gSUB += 2
+
         checkList = []
         retList = []
-        print()
-        for i in self.expressions:
+        print("\n" + " " * gSUB + "Hypotheses:")
+        for i in self.operations:
             checkList.append(i)
             retList.append(self.rec_test(i, *vars))
-            print("⊢", i, " : ", str(retList[-1]))
+            print(" " * gSUB + "⊢", i, " : ", str(retList[-1]))
             if not retList[-1]:
                 print("Assertion: False")
                 return
-        print("Assertion:", self.rec_test(self.assertion, *vars))
+        print(" " * gSUB + "Assertion:", self.rec_test(self.assertion, *vars))
+
+        gSUB -= 2
+        return self.rec_test(self.assertion, *vars)
