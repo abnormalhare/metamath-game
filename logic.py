@@ -27,7 +27,7 @@ class Syntax:
         self.test = func
 
 class Expression:
-    def __init__(self, var1=None, syntax: Syntax=None, var2=None) -> None:
+    def __init__(self, var1=None, syntax: Syntax=None, var2=None):
         self.var1 = var1
         self.syntax = syntax
         self.var2 = var2
@@ -53,7 +53,6 @@ class Expression:
             return f"({self.var1} {self.syntax.symbol} {self.var2})"
     
     def substitute(self, var1, var2=None):
-        print(" " * (30), self, var1, var2)
         if isinstance(var1, Expression):
             var1 = var1.substitute(var1.var1, var1.var2)
         if isinstance(var2, Expression):
@@ -124,6 +123,7 @@ class Axiom:
     
     def substitute(self, *vars) -> list:
         global gSUB
+        print("\n" + " " * gSUB + "Axiom:", self.name + ", Substituting")
         gSUB += 2
 
         checkList = []
@@ -135,10 +135,12 @@ class Axiom:
             print(" " * gSUB + "wff", str(retList[-1]))
         
         gSUB -= 2
+        print(" " * gSUB + "-" * (30 - gSUB))
         return retList[-1]
 
     def test(self, *vars):
         global gSUB
+        print("\n" + " " * gSUB + "Axiom:", self.name + ", Testing")
         gSUB += 2
         
         checkList = []
@@ -150,6 +152,7 @@ class Axiom:
             print(" " * gSUB + "wff", i, " : ", str(retList[-1]))
         
         gSUB -= 2
+        print(" " * gSUB + "-" * (30 - gSUB))
         return retList[-1]
 
 class Theorem:
@@ -204,7 +207,7 @@ class Theorem:
     
     def substitute(self, *vars) -> list:
         global gSUB
-        print("\n" + " " * gSUB + "Theorem:", self.name)
+        print("\n" + " " * gSUB + "Theorem:", self.name + ", Substituting")
         gSUB += 2
 
         checkList = []
@@ -221,6 +224,7 @@ class Theorem:
             print(" " * gSUB + "Assertion: ⊢", self.rec_sub(self.assertion, *vars))
         
             gSUB -= 2
+            print(" " * gSUB + "-" * (30 - gSUB))
             return self.rec_sub(self.assertion, *vars)
 
         print("\n" + " " * gSUB + "Steps:")
@@ -230,31 +234,64 @@ class Theorem:
             if not isinstance(i, list):
                 continue
             if not isinstance(i[1], Expression):
-                i[1] = retList[i[1] - 1]
+                i[1] = retList[i[1] - 1].var1
             checkList.append(i)
-            retList.append(i[0].substitute(i[1].var1, i[1].var2))
+
+            sub1 = self.rec_sub(i[1].var1, *vars) if i[1].var1.id >= len(vars) else vars[i[1].var1.id]
+            sub2 = self.rec_sub(i[1].var2, *vars) if i[1].var2.id >= len(vars) else vars[i[1].var2.id]
+            retList.append(i[0].substitute(sub1, sub2))
+            
             print(" " * gSUB + "Result: ⊢", str(retList[-1]))
                 
         print("\n" + " " * gSUB + "Assertion: ⊢", self.rec_sub(self.assertion, *vars))
         
         gSUB -= 2
+        print(" " * gSUB + "-" * (30 - gSUB))
         return self.rec_sub(self.assertion, *vars)
 
     def test(self, *vars):
         global gSUB
+        print("\n" + " " * gSUB + "Theorem:", self.name + ", Testing")
         gSUB += 2
 
         checkList = []
         retList = []
         print("\n" + " " * gSUB + "Hypotheses:")
         for i in self.operations:
+            if not isinstance(i, Expression):
+                break
             checkList.append(i)
             retList.append(self.rec_test(i, *vars))
             print(" " * gSUB + "⊢", i, " : ", str(retList[-1]))
             if not retList[-1]:
                 print("Assertion: False")
                 return
-        print(" " * gSUB + "Assertion:", self.rec_test(self.assertion, *vars))
+            
+        if isinstance(self.operations[-1], Expression):
+            print(" " * gSUB + "Assertion:", self.rec_test(self.assertion, *vars))
 
+            gSUB -= 2
+            print(" " * gSUB + "-" * (30 - gSUB))
+            return self.rec_test(self.assertion, *vars)
+        
+        print("\n" + " " * gSUB + "Steps:")
+        for i in self.operations:
+            if not any(isinstance(t, list) for t in self.operations):
+                break
+            if not isinstance(i, list):
+                continue
+            if not isinstance(i[1], Expression):
+                i[1] = retList[i[1] - 1].var1
+            checkList.append(i)
+
+            sub1 = self.rec_test(i[1].var1, *vars) if i[1].var1.id >= len(vars) else vars[i[1].var1.id]
+            sub2 = self.rec_test(i[1].var2, *vars) if i[1].var2.id >= len(vars) else vars[i[1].var2.id]
+            retList.append(i[0].test(sub1, sub2))
+            
+            print(" " * gSUB + "Result: ⊢", str(retList[-1]))
+                
+        print("\n" + " " * gSUB + "Assertion: ⊢", self.rec_test(self.assertion, *vars))
+        
         gSUB -= 2
+        print(" " * gSUB + "-" * (30 - gSUB))
         return self.rec_test(self.assertion, *vars)
